@@ -1,13 +1,24 @@
 $(function() {
     var fps = 30;
 
+    var peopleReady = false;
     var rendererReady = false;
 
     function ready() {
-        return rendererReady;
+        return peopleReady && rendererReady;
     }
 
-    var renderer = new Renderer(function() {
+    var people = new People(function() {
+        peopleReady = true;
+        if (ready()) {
+            start();
+        }
+    });
+
+    people.add('karis.png');
+    people.done();
+
+    var renderer = new Renderer(people, function() {
         rendererReady = true;
         if (ready()) {
             start();
@@ -15,14 +26,13 @@ $(function() {
     });
 
     function frame() {
-        setTimeout(function() {
-            requestAnimationFrame(frame);
-        }, 1000 / fps);
-
         renderer.render();
+
+        requestAnimationFrame(frame);
     }
 
     function start() {
+        people.people[0].start();
         setTimeout(frame, 0);
     }
 });
