@@ -7,39 +7,50 @@ var Renderer = (function() {
     var tileWidth = 1024 / (tileSize * scaleFactor);
     var tileHeight = 576 / (tileSize * scaleFactor);
 
-    var numBgLayers = 1;
+    var numBgLayers = 2;
     var numFgLayers = 1;
 
-    var obj = function(people, ready) {
+    var obj = function(canvas, people, ready) {
+        this.ctx = canvas.getContext('2d');
+        this.ctx.imageSmoothingEnabled = false;
+
         this.people = people;
 
         this.tileset = new Image();
         this.tileset.src = './tileset.png';
         this.tileset.onload = ready;
 
-        var canvas = document.getElementById('frame');
-        this.ctx = canvas.getContext('2d');
-        this.ctx.imageSmoothingEnabled = false;
+        this.highlightX = -1;
+        this.highlightY = -1;
     };
 
-    data = [[8, 16, 17, 17, 17, 17, 17, 17, 18, 6, 32, 33, 33, 33, 33, 34,
-             8, 24, 25, 25, 25, 25, 25, 25, 26, 23, 40, 41, 41, 41, 41, 42,
-             0, 0, 0, 0, 1, 0, 0, 0, 0, 31, 5, 4, 4, 4, 4, 4,
-             0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4,
-             0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4,
-             0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4,
-             0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4,
-             0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4,
-             0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4],
-            [343, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-             351, -1, 176, 177, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-             -1, 112, 184, 185, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-             -1, 112, 184, 185, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-             -1, 112, 192, 193, 194, 194, 194, 194, 194, 7, -1, -1, -1, -1, -1, -1,
-             -1, 112, 200, 201, 202, 202, 202, 202, 202, 15, -1, -1, -1, -1, -1, -1,
-             -1, -1, 208, 209, 210, 210, 210, 210, 210, 6, -1, -1, -1, -1, -1, -1,
-             -1, -1, 112, 112, 112, 112, 112, 112, 112, 23, -1, -1, -1, -1, -1, -1,
-             -1, -1, -1, -1, -1, -1, -1, -1, -1, 31, -1, -1, -1, -1, -1, -1]];
+    var data = [[8, 16, 17, 17, 17, 17, 17, 17, 18, 6, 32, 33, 33, 33, 33, 34,
+                 8, 24, 25, 25, 25, 25, 25, 25, 26, 23, 40, 41, 41, 41, 41, 42,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, 31, 5, 4, 4, 4, 4, 4,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4],
+                [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, 112, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, 112, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, 112, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, 112, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, 112, 112, 112, 112, 112, 112, 112, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+                [343, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 351, -1, 176, 177, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, 184, 185, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, 184, 185, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, 192, 193, 194, 194, 194, 194, 194, 7, -1, -1, -1, -1, -1, -1,
+                 -1, -1, 200, 201, 202, 202, 202, 202, 202, 15, -1, -1, -1, -1, -1, -1,
+                 -1, -1, 208, 209, 210, 210, 210, 210, 210, 6, -1, -1, -1, -1, -1, -1,
+                 -1, -1, -1, -1, -1, -1, -1, -1, -1, 23, -1, -1, -1, -1, -1, -1,
+                 -1, -1, -1, -1, -1, -1, -1, -1, -1, 31, -1, -1, -1, -1, -1, -1]];
 
     obj.prototype.renderLayer = function(layer) {
         for (var i = 0; i < tileWidth; i++) {
@@ -63,27 +74,90 @@ var Renderer = (function() {
     }
 
     obj.prototype.render = function() {
+        this.ctx.globalAlpha = 1.0;
+
         for (var layer = 0; layer < numBgLayers; layer++) {
             this.renderLayer(layer);
         }
+
         for (var i = 0; i < this.people.people.length; i++) {
             var person = this.people.people[i];
             var frame = 2 - Math.abs(person.frame - 2);
-            console.log(frame);
+
+            var partialX, partialY;
+            switch (person.direction) {
+            case 0:
+                partialX = 0;
+                partialY = person.partial;
+                break;
+            case 1:
+                partialX = -person.partial;
+                partialY = 0;
+                break;
+            case 2:
+                partialX = person.partial;
+                partialY = 0;
+                break;
+            case 3:
+                partialX = 0;
+                partialY = -person.partial;
+                break;
+            }
+
             this.ctx.drawImage(person.sprite,
                                tileSize * frame,
                                tileSize * person.direction,
                                tileSize,
                                tileSize,
-                               tileSize * 4 * scaleFactor,
-                               tileSize * 3 * scaleFactor,
+                               ~~(tileSize * (person.x + partialX)) * scaleFactor,
+                               ~~(tileSize * (person.y + partialY)) * scaleFactor,
                                tileSize * scaleFactor,
                                tileSize * scaleFactor);
         }
+
         for (var layer = numBgLayers; layer < numBgLayers + numFgLayers; layer++) {
             this.renderLayer(layer);
         }
+
+        this.ctx.fillStyle = '#FF0000';
+        this.ctx.globalAlpha = 0.2;
+
+        for (var i = 0; i < tileWidth; i++) {
+            for (var j = 0; j < tileHeight; j++) {
+                if (this.people.reservations[j * tileWidth + i] >= 0) {
+                    this.ctx.fillRect(i * tileSize * scaleFactor,
+                                      j * tileSize * scaleFactor,
+                                      tileSize * scaleFactor,
+                                      tileSize * scaleFactor);
+                }
+            }
+        }
+
+        if (this.highlightX >= 0 && this.highlightY >= 0) {
+            var date = new Date()
+
+            this.ctx.fillStyle = '#FFFFFF';
+            this.ctx.globalAlpha = 0.1 + 0.1 * Math.abs(date.getMilliseconds() - 500) / 500;
+            this.ctx.fillRect(this.highlightX * tileSize * scaleFactor,
+                              this.highlightY * tileSize * scaleFactor,
+                              tileSize * scaleFactor,
+                              tileSize * scaleFactor);
+        }
     };
+
+    obj.prototype.highlight = function(x, y) {
+        if (x < 0 || x >= tileWidth) {
+            this.highlightX = -1;
+        } else {
+            this.highlightX = x;
+        }
+
+        if (y < 0 || y >= tileHeight) {
+            this.highlightY = -1;
+        } else {
+            this.highlightY = y;
+        }
+    }
 
     return obj;
 })();

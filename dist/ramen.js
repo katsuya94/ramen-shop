@@ -9206,6 +9206,40 @@ return jQuery;
 
 $(function() {
     var fps = 30;
+    var tileSize = 32;
+    var scaleFactor = 2;
+
+    var canvas = document.getElementById('frame');
+
+    var seats = [{x: 1, y: 2},
+                 {x: 1, y: 3},
+                 {x: 1, y: 4},
+                 {x: 1, y: 5},
+                 {x: 2, y: 7},
+                 {x: 3, y: 7},
+                 {x: 4, y: 7},
+                 {x: 5, y: 7},
+                 {x: 6, y: 7},
+                 {x: 7, y: 7},
+                 {x: 8, y: 7}];
+
+    function getPos(evt) {
+        var rect = canvas.getBoundingClientRect();
+        return {
+            x: ~~((evt.clientX - rect.left) / (tileSize * scaleFactor)),
+            y: ~~((evt.clientY - rect.top) / (tileSize * scaleFactor))
+        }
+    }
+
+    canvas.addEventListener('mousemove', function(evt) {
+        var coord = getPos(evt);
+        renderer.highlight(coord.x, coord.y);
+    });
+
+    canvas.addEventListener('mousedown', function(evt) {
+        var coord = getPos(evt);
+        karis.setGoal(coord.x, coord.y);
+    });
 
     var peopleReady = false;
     var rendererReady = false;
@@ -9221,32 +9255,68 @@ $(function() {
         }
     });
 
-    people.add('karis.png');
+    var karis = people.add('karis.png', 4, 3);
+
+    var customers = [people.add('customer.png', 0, 2),
+                     people.add('customer.png', 0, 4),
+                     people.add('customer.png', 0, 6),]
+
     people.done();
 
-    var renderer = new Renderer(people, function() {
+    var renderer = new Renderer(canvas, people, function() {
         rendererReady = true;
         if (ready()) {
             start();
         }
     });
 
+    var last;
+
     function frame() {
+        var now = new Date();
+        dt = now - last;
+        last = now;
+
+        people.update(dt);
         renderer.render();
 
         requestAnimationFrame(frame);
     }
 
     function start() {
-        people.people[0].start();
+        people.start();
+        setInterval(function() {
+            for (var i = 0; i < customers.length; i++) {
+                var coord = seats[~~(Math.random() * seats.length)];
+                customers[i].setGoal(coord.x, coord.y);
+            }
+        }, 4000);
+        last = new Date();
         setTimeout(frame, 0);
     }
 });
 
 var People = (function() {
+    var tileSize = 32;
+
+    var scaleFactor = 2;
+
+    var tileWidth = 1024 / (tileSize * scaleFactor);
+    var tileHeight = 576 / (tileSize * scaleFactor);
+
     var maxFrame = 4;
 
-    function Person(sprite, ready) {
+    var terrain = [-2, -2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                   -2, -2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                   -2, -2, -1, -1, -2, -2, -2, -2, -2, -1, -2, -2, -2, -2, -2, -2,
+                   -2, -2, -1, -1, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
+                   -2, -2, -1, -1, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
+                   -2, -2, -1, -1, -1, -1, -1, -1, -1, -1, -2, -2, -2, -2, -2, -2,
+                   -2, -2, -1, -1, -1, -1, -1, -1, -1, -1, -2, -2, -2, -2, -2, -2,
+                   -2, -2, -2, -2, -2, -2, -2, -2, -2, -1, -2, -2, -2, -2, -2, -2,
+                   -2, -2, -2, -2, -2, -2, -2, -2, -2, -1, -2, -2, -2, -2, -2, -2];
+
+    function Person(sprite, x, y, reserve, release, available, ready) {
         this.sprite = new Image();
         this.sprite.src = sprite;
         this.ready = false;
@@ -9257,7 +9327,23 @@ var People = (function() {
         };
         this.frame = 0;
         this.direction = 0;
+
         this.interval = null;
+
+        this.x = x;
+        this.y = y;
+
+        this.goalX = -1;
+        this.goalY = -1;
+
+        this.partial = 0.0;
+        this.path = new Array();
+
+        this.pending = null;
+
+        this.reserve = reserve;
+        this.release = release;
+        this.available = available;
     }
 
     Person.prototype.start = function() {
@@ -9278,17 +9364,238 @@ var People = (function() {
         this.frame = (this.frame + 1) % maxFrame;
     }
 
+    Person.prototype.update = function(dt) {
+        if (this.pending) {
+            var instance = this;
+            this.pending.call(instance, this.pending);
+            this.pending = null;
+        }
+
+        if (this.goalX >= 0 && this.goalY >= 0) {
+            this.partial += 2.0 * dt / 1000;
+            if (this.partial > 1.0) {
+                this.release(this.y * tileWidth + this.x)
+                switch (this.direction) {
+                case 0:
+                    this.y++;
+                    break;
+                case 1:
+                    this.x--;
+                    break;
+                case 2:
+                    this.x++;
+                    break;
+                case 3:
+                    this.y--;
+                    break;
+                }
+                this.partial = 0.0;
+                this.nextMove();
+            }
+        }
+    }
+
+    Person.prototype.setGoal = function(x, y) {
+        this.pending = function() {
+            if (this.goalX === x && this.goalY === y) {
+                return;
+            }
+            this.goalX = x;
+            this.goalY = y;
+            this.recalculate();
+        }
+    };
+
+    Person.prototype.shortestPath = function(x, y, goalX, goalY) {
+        var path = new Array();
+
+        var start = y * tileWidth + x;
+        var goal = goalY * tileWidth + goalX;
+
+        if (terrain[goal] >= -1) {
+            return path;
+        }
+
+        var grid = terrain.slice(0);
+        grid[start] = -1;
+
+        var frontier = [start];
+
+        function found() {
+            var index = goal;
+            while (grid[index] >= 0) {
+                path.push(index);
+                index = grid[index];
+            }
+        }
+
+        var instance = this;
+
+        function explore(index, candidate) {
+            if (grid[candidate] < -1 && instance.available.call(instance, candidate)) {
+                grid[candidate] = index;
+                if (candidate === goal) {
+                    found();
+                    return true;
+                }
+                frontier.push(candidate);
+            }
+            return false;
+        }
+
+        while (frontier.length) {
+            var index = frontier.shift();
+            var candidate;
+            candidate = index - tileWidth;
+            if (candidate >= 0) {
+                if (explore(index, candidate)) {
+                    return path;
+                }
+            }
+            candidate = index - 1;
+            if (~~(candidate / tileWidth) == ~~(index / tileWidth)) {
+                if (explore(index, candidate)) {
+                    return path;
+                }
+            }
+            candidate = index + 1;
+            if (~~(candidate / tileWidth) == ~~(index / tileWidth)) {
+                if (explore(index, candidate)) {
+                    return path;
+                }
+            }
+            candidate = index + tileWidth;
+            if (candidate < tileWidth * tileHeight) {
+                if (explore(index, candidate)) {
+                    return path;
+                }
+            }
+        }
+
+        return path;
+    };
+
+    Person.prototype.switchTurn = function() {
+        switch (this.direction) {
+        case 0:
+            this.y++;
+            break;
+        case 1:
+            this.x--;
+            break;
+        case 2:
+            this.x++;
+            break;
+        case 3:
+            this.y--;
+            break;
+        }
+        this.direction = 3 - this.direction;
+        this.partial = 1.0 - this.partial;
+    }
+
+    Person.prototype.legal = function(index) {
+        return terrain[index] < -1;
+    }
+
+    Person.prototype.nextMove = function() {
+        if (!this.path.length) {
+            this.goalX = -1;
+            this.goalY = -1;
+            return;
+        }
+        var next = this.path.pop();
+        var index = this.y * tileWidth + this.x;
+        if (this.legal(next)) {
+            var direction = null;
+            if (next - index == tileWidth) {
+                direction = 0;
+            } else if (next - index == -1) {
+                direction = 1;
+            } else if (next - index == 1) {
+                direction = 2;
+            } else if (next - index == -tileWidth) {
+                direction = 3;
+            }
+            if (direction !== null && this.reserve(next)) {
+                this.direction = direction;
+                return;
+            }
+        }
+        this.recalculate();
+    }
+
+    Person.prototype.recalculate = function() {
+        var path = this.shortestPath(this.x, this.y, this.goalX, this.goalY);
+
+        if (this.partial > 0.0) {
+            var altX, altY;
+            switch (this.direction) {
+            case 0:
+                altX = this.x;
+                altY = this.y + 1;
+                break;
+            case 1:
+                altX = this.x - 1;
+                altY = this.y;
+                break;
+            case 2:
+                altX = this.x + 1;
+                altY = this.y;
+                break;
+            case 3:
+                altX = this.x;
+                altY = this.y - 1;
+                break;
+            }
+            var alternate = this.shortestPath(altX, altY, this.goalX, this.goalY)
+            if (this.partial + path.length < 1.0 - this.partial + alternate.length) {
+                this.path = path;
+                this.switchTurn();
+            } else {
+                this.path = alternate;
+            }
+        } else {
+            this.path = path;
+            this.nextMove();
+        }
+    };
+
     var obj = function(ready) {
         this.ready = ready;
         this.noMore = false;
         this.people = new Array();
+        this.reservations = [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1];
     };
 
-    obj.prototype.add = function(sprite) {
+    obj.prototype.update = function(dt) {
+        for (var i = 0; i < this.people.length; i++) {
+            this.people[i].update(dt);
+        }
+    }
+
+    obj.prototype.add = function(sprite, x, y) {
+        var id = this.people.length;
         var instance = this;
-        this.people.push(new Person(sprite, function() {
+        var person = new Person(sprite, x, y, function(index) {
+            return instance.reserve.call(instance, index, id);
+        }, function(index) {
+            return instance.release.call(instance, index, id);
+        }, function(index) {
+            return instance.available.call(instance, index, id);
+        }, function() {
             instance.spriteLoaded.call(instance);
-        }));
+        });
+        this.people.push(person);
+        return person;
     };
 
     obj.prototype.done = function() {
@@ -9307,6 +9614,35 @@ var People = (function() {
         }
     }
 
+    obj.prototype.start = function() {
+        for (var i = 0; i < this.people.length; i++) {
+            this.people[i].start();
+        }
+    }
+
+    obj.prototype.reserve = function(index, id) {
+        if (this.reservations[index] < 0) {
+            this.reservations[index] = id;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    obj.prototype.release = function(index, id) {
+        if (this.reservations[index] == id) {
+            this.reservations[index] = -1;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    obj.prototype.available = function(index, id) {
+        var value = this.reservations[index];
+        return value < 0 || value == id;
+    }
+
     return obj;
 })();
 
@@ -9319,39 +9655,50 @@ var Renderer = (function() {
     var tileWidth = 1024 / (tileSize * scaleFactor);
     var tileHeight = 576 / (tileSize * scaleFactor);
 
-    var numBgLayers = 1;
+    var numBgLayers = 2;
     var numFgLayers = 1;
 
-    var obj = function(people, ready) {
+    var obj = function(canvas, people, ready) {
+        this.ctx = canvas.getContext('2d');
+        this.ctx.imageSmoothingEnabled = false;
+
         this.people = people;
 
         this.tileset = new Image();
         this.tileset.src = './tileset.png';
         this.tileset.onload = ready;
 
-        var canvas = document.getElementById('frame');
-        this.ctx = canvas.getContext('2d');
-        this.ctx.imageSmoothingEnabled = false;
+        this.highlightX = -1;
+        this.highlightY = -1;
     };
 
-    data = [[8, 16, 17, 17, 17, 17, 17, 17, 18, 6, 32, 33, 33, 33, 33, 34,
-             8, 24, 25, 25, 25, 25, 25, 25, 26, 23, 40, 41, 41, 41, 41, 42,
-             0, 0, 0, 0, 1, 0, 0, 0, 0, 31, 5, 4, 4, 4, 4, 4,
-             0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4,
-             0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4,
-             0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4,
-             0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4,
-             0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4,
-             0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4],
-            [343, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-             351, -1, 176, 177, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-             -1, 112, 184, 185, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-             -1, 112, 184, 185, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-             -1, 112, 192, 193, 194, 194, 194, 194, 194, 7, -1, -1, -1, -1, -1, -1,
-             -1, 112, 200, 201, 202, 202, 202, 202, 202, 15, -1, -1, -1, -1, -1, -1,
-             -1, -1, 208, 209, 210, 210, 210, 210, 210, 6, -1, -1, -1, -1, -1, -1,
-             -1, -1, 112, 112, 112, 112, 112, 112, 112, 23, -1, -1, -1, -1, -1, -1,
-             -1, -1, -1, -1, -1, -1, -1, -1, -1, 31, -1, -1, -1, -1, -1, -1]];
+    var data = [[8, 16, 17, 17, 17, 17, 17, 17, 18, 6, 32, 33, 33, 33, 33, 34,
+                 8, 24, 25, 25, 25, 25, 25, 25, 26, 23, 40, 41, 41, 41, 41, 42,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, 31, 5, 4, 4, 4, 4, 4,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4,
+                 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 5, 4, 4, 4, 4, 4],
+                [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, 112, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, 112, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, 112, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, 112, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, 112, 112, 112, 112, 112, 112, 112, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+                [343, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 351, -1, 176, 177, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, 184, 185, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, 184, 185, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, 192, 193, 194, 194, 194, 194, 194, 7, -1, -1, -1, -1, -1, -1,
+                 -1, -1, 200, 201, 202, 202, 202, 202, 202, 15, -1, -1, -1, -1, -1, -1,
+                 -1, -1, 208, 209, 210, 210, 210, 210, 210, 6, -1, -1, -1, -1, -1, -1,
+                 -1, -1, -1, -1, -1, -1, -1, -1, -1, 23, -1, -1, -1, -1, -1, -1,
+                 -1, -1, -1, -1, -1, -1, -1, -1, -1, 31, -1, -1, -1, -1, -1, -1]];
 
     obj.prototype.renderLayer = function(layer) {
         for (var i = 0; i < tileWidth; i++) {
@@ -9375,27 +9722,90 @@ var Renderer = (function() {
     }
 
     obj.prototype.render = function() {
+        this.ctx.globalAlpha = 1.0;
+
         for (var layer = 0; layer < numBgLayers; layer++) {
             this.renderLayer(layer);
         }
+
         for (var i = 0; i < this.people.people.length; i++) {
             var person = this.people.people[i];
             var frame = 2 - Math.abs(person.frame - 2);
-            console.log(frame);
+
+            var partialX, partialY;
+            switch (person.direction) {
+            case 0:
+                partialX = 0;
+                partialY = person.partial;
+                break;
+            case 1:
+                partialX = -person.partial;
+                partialY = 0;
+                break;
+            case 2:
+                partialX = person.partial;
+                partialY = 0;
+                break;
+            case 3:
+                partialX = 0;
+                partialY = -person.partial;
+                break;
+            }
+
             this.ctx.drawImage(person.sprite,
                                tileSize * frame,
                                tileSize * person.direction,
                                tileSize,
                                tileSize,
-                               tileSize * 4 * scaleFactor,
-                               tileSize * 3 * scaleFactor,
+                               ~~(tileSize * (person.x + partialX)) * scaleFactor,
+                               ~~(tileSize * (person.y + partialY)) * scaleFactor,
                                tileSize * scaleFactor,
                                tileSize * scaleFactor);
         }
+
         for (var layer = numBgLayers; layer < numBgLayers + numFgLayers; layer++) {
             this.renderLayer(layer);
         }
+
+        this.ctx.fillStyle = '#FF0000';
+        this.ctx.globalAlpha = 0.2;
+
+        for (var i = 0; i < tileWidth; i++) {
+            for (var j = 0; j < tileHeight; j++) {
+                if (this.people.reservations[j * tileWidth + i] >= 0) {
+                    this.ctx.fillRect(i * tileSize * scaleFactor,
+                                      j * tileSize * scaleFactor,
+                                      tileSize * scaleFactor,
+                                      tileSize * scaleFactor);
+                }
+            }
+        }
+
+        if (this.highlightX >= 0 && this.highlightY >= 0) {
+            var date = new Date()
+
+            this.ctx.fillStyle = '#FFFFFF';
+            this.ctx.globalAlpha = 0.1 + 0.1 * Math.abs(date.getMilliseconds() - 500) / 500;
+            this.ctx.fillRect(this.highlightX * tileSize * scaleFactor,
+                              this.highlightY * tileSize * scaleFactor,
+                              tileSize * scaleFactor,
+                              tileSize * scaleFactor);
+        }
     };
+
+    obj.prototype.highlight = function(x, y) {
+        if (x < 0 || x >= tileWidth) {
+            this.highlightX = -1;
+        } else {
+            this.highlightX = x;
+        }
+
+        if (y < 0 || y >= tileHeight) {
+            this.highlightY = -1;
+        } else {
+            this.highlightY = y;
+        }
+    }
 
     return obj;
 })();
