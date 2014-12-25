@@ -13,12 +13,22 @@ var People = (function() {
                    -2, -2, -1, -1, -2, -2, -2, -2, -2, -1, -2, -2, -2, -2, -2, -2,
                    -2, -2, -1, -1, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
                    -2, -2, -1, -1, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
-                   -2, -2, -1, -1, -1, -1, -1, -1, -1, -1, -2, -2, -2, -2, -2, -2,
-                   -2, -2, -1, -1, -1, -1, -1, -1, -1, -1, -2, -2, -2, -2, -2, -2,
-                   -2, -2, -2, -2, -2, -2, -2, -2, -2, -1, -2, -2, -2, -2, -2, -2,
+                   -2, -2, -1, -1, -2, -2, -2, -2, -2, -2, -1, -2, -1, -1, -1, -2,
+                   -2, -2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -2, -1, -1, -1, -2,
+                   -2, -2, -2, -2, -2, -2, -2, -2, -2, -1, -1, -2, -2, -2, -2, -2,
                    -2, -2, -2, -2, -2, -2, -2, -2, -2, -1, -2, -2, -2, -2, -2, -2];
 
-    function Person(sprite, x, y, reserve, release, available, ready) {
+    var borders = [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                   -1, -1, -1, -1, -1,  0,  0,  0, -1, -1, -1, -1, -1, -1, -1, -1,
+                   -1, -1, -1, -1, -1,  3,  3,  3, -1, -1, -1, -1, -1, -1, -1, -1,
+                   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1];
+
+    function Person(sprite, reserve, release, available, ready) {
         this.sprite = new Image();
         this.sprite.src = sprite;
         this.ready = false;
@@ -32,8 +42,10 @@ var People = (function() {
 
         this.interval = null;
 
-        this.x = x;
-        this.y = y;
+        this.visible = false;
+
+        this.x = -1;
+        this.y = -1;
 
         this.goalX = -1;
         this.goalY = -1;
@@ -155,8 +167,8 @@ var People = (function() {
 
         var instance = this;
 
-        function explore(index, candidate) {
-            if (grid[candidate] < -1 && instance.available.call(instance, candidate)) {
+        function explore(index, candidate, direction) {
+            if (borders[index] != direction && grid[candidate] < -1 && instance.available.call(instance, candidate)) {
                 grid[candidate] = index;
                 if (candidate === goal) {
                     found();
@@ -170,27 +182,27 @@ var People = (function() {
         while (frontier.length) {
             var index = frontier.shift();
             var candidate;
-            candidate = index - tileWidth;
-            if (candidate >= 0) {
-                if (explore(index, candidate)) {
+            candidate = index + tileWidth;
+            if (candidate < tileWidth * tileHeight) {
+                if (explore(index, candidate, 0)) {
                     return path;
                 }
             }
             candidate = index - 1;
             if (~~(candidate / tileWidth) == ~~(index / tileWidth)) {
-                if (explore(index, candidate)) {
+                if (explore(index, candidate, 1)) {
                     return path;
                 }
             }
             candidate = index + 1;
             if (~~(candidate / tileWidth) == ~~(index / tileWidth)) {
-                if (explore(index, candidate)) {
+                if (explore(index, candidate, 2)) {
                     return path;
                 }
             }
-            candidate = index + tileWidth;
-            if (candidate < tileWidth * tileHeight) {
-                if (explore(index, candidate)) {
+            candidate = index - tileWidth;
+            if (candidate >= 0) {
+                if (explore(index, candidate, 3)) {
                     return path;
                 }
             }
@@ -281,14 +293,16 @@ var People = (function() {
 
     obj.prototype.update = function(dt) {
         for (var i = 0; i < this.people.length; i++) {
-            this.people[i].update(dt);
+            if (this.people[i].visible) {
+                this.people[i].update(dt);
+            }
         }
     }
 
-    obj.prototype.add = function(sprite, x, y) {
+    obj.prototype.add = function(sprite) {
         var id = this.people.length;
         var instance = this;
-        var person = new Person(sprite, x, y, function(index) {
+        var person = new Person(sprite, function(index) {
             return instance.reserve.call(instance, index, id);
         }, function(index) {
             return instance.release.call(instance, index, id);
