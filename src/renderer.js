@@ -84,24 +84,14 @@ var Renderer = (function() {
             var person = this.people.people[i];
             var frame = 2 - Math.abs(person.frame - 2);
 
-            var partialX, partialY;
-            switch (person.direction) {
-            case 0:
-                partialX = 0;
-                partialY = person.partial;
-                break;
-            case 1:
-                partialX = -person.partial;
-                partialY = 0;
-                break;
-            case 2:
-                partialX = person.partial;
-                partialY = 0;
-                break;
-            case 3:
-                partialX = 0;
-                partialY = -person.partial;
-                break;
+            var x, y;
+
+            if (person.adjX < 0 && person.adjY < 0) {
+                x = person.x;
+                y = person.y;
+            } else {
+                x = person.x * (1.0 - person.partial) + person.adjX * person.partial;
+                y = person.y * (1.0 - person.partial) + person.adjY * person.partial;
             }
 
             this.ctx.drawImage(person.sprite,
@@ -109,8 +99,8 @@ var Renderer = (function() {
                                tileSize * person.direction,
                                tileSize,
                                tileSize,
-                               ~~(tileSize * (person.x + partialX)) * scaleFactor,
-                               ~~(tileSize * (person.y + partialY)) * scaleFactor,
+                               ~~(tileSize * x) * scaleFactor,
+                               ~~(tileSize * y) * scaleFactor,
                                tileSize * scaleFactor,
                                tileSize * scaleFactor);
         }
@@ -142,6 +132,25 @@ var Renderer = (function() {
                               this.highlightY * tileSize * scaleFactor,
                               tileSize * scaleFactor,
                               tileSize * scaleFactor);
+        }
+
+        this.ctx.globalAlpha = 1.0
+        this.ctx.strokeStyle = '#0000FF';
+
+        for (var i = 0; i < this.people.people.length; i++) {
+            var person = this.people.people[i];
+            if (person.goalX >= 0 && person.goalY >= 0) {
+                this.ctx.beginPath();
+                this.ctx.moveTo((person.x + 0.5) * tileSize * scaleFactor,
+                                (person.y + 0.5) * tileSize * scaleFactor);
+                for (var j = person.path.length - 1; j >= 0; j--) {
+                    var x = person.path[j] % tileWidth;
+                    var y = ~~(person.path[j] / tileWidth);
+                    this.ctx.lineTo((x + 0.5) * tileSize * scaleFactor,
+                                    (y + 0.5) * tileSize * scaleFactor);
+                }
+                this.ctx.stroke();
+            }
         }
     };
 

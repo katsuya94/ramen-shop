@@ -51,9 +51,10 @@ $(function() {
 
     var karis = people.add('karis.png', 4, 3);
 
-    var customers = [people.add('customer.png', 0, 2),
-                     people.add('customer.png', 0, 4),
-                     people.add('customer.png', 0, 6),]
+    var customers = [people.add('customerm.png', 0, 2),
+                     people.add('customerf.png', 0, 4),
+                     people.add('customerm.png', 0, 6),
+                     people.add('customerf.png', 0, 8)]
 
     people.done();
 

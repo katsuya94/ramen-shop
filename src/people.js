@@ -38,10 +38,14 @@ var People = (function() {
         this.goalX = -1;
         this.goalY = -1;
 
+        this.adjX = -1;
+        this.adjY = -1;
+
         this.partial = 0.0;
         this.path = new Array();
 
-        this.pending = null;
+        this.newGoal = null;
+        this.tryAgain = false;
 
         this.reserve = reserve;
         this.release = release;
@@ -66,47 +70,65 @@ var People = (function() {
         this.frame = (this.frame + 1) % maxFrame;
     }
 
+    Person.prototype.findAdjacent = function() {
+        switch (this.direction) {
+        case 0:
+            this.adjX = this.x;
+            this.adjY = this.y + 1;
+            break;
+         case 1:
+            this.adjX = this.x - 1;
+            this.adjY = this.y;
+            break;
+         case 2:
+            this.adjX = this.x + 1;
+            this.adjY = this.y;
+            break;
+         case 3:
+            this.adjX = this.x;
+            this.adjY = this.y - 1;
+            break;
+        }
+    }
+
     Person.prototype.update = function(dt) {
-        if (this.pending) {
-            var instance = this;
-            this.pending.call(instance, this.pending);
-            this.pending = null;
+        if (this.newGoal) {
+            this.goalX = this.newGoal.x;
+            this.goalY = this.newGoal.y;
+            this.newGoal = null;
         }
 
-        if (this.goalX >= 0 && this.goalY >= 0) {
+        if (this.tryAgain) {
+            if (this.recalculate()) {
+                this.tryAgain = false;
+            }
+        }
+
+        if (this.adjX >= 0 && this.adjY >= 0) {
             this.partial += 2.0 * dt / 1000;
             if (this.partial > 1.0) {
                 this.release(this.y * tileWidth + this.x)
-                switch (this.direction) {
-                case 0:
-                    this.y++;
-                    break;
-                case 1:
-                    this.x--;
-                    break;
-                case 2:
-                    this.x++;
-                    break;
-                case 3:
-                    this.y--;
-                    break;
-                }
+                this.x = this.adjX;
+                this.y = this.adjY;
                 this.partial = 0.0;
-                this.nextMove();
+                this.adjX = -1;
+                this.adjY = -1;
+                if (this.x == this.goalX && this.y == this.goalY) {
+                    this.goalX = -1;
+                    this.goalY = -1;
+                } else {
+                    if (!this.nextMove()) {
+                        this.tryAgain = true;
+                    }
+                }
             }
         }
     }
 
     Person.prototype.setGoal = function(x, y) {
-        this.pending = function() {
-            if (this.goalX === x && this.goalY === y) {
-                return;
-            }
-            this.goalX = x;
-            this.goalY = y;
-            this.recalculate();
-        }
-    };
+        this.newGoal = {x: x, y: y};
+        this.tryAgain = true;
+    }
 
     Person.prototype.shortestPath = function(x, y, goalX, goalY) {
         var path = new Array();
@@ -115,7 +137,7 @@ var People = (function() {
         var goal = goalY * tileWidth + goalX;
 
         if (terrain[goal] >= -1) {
-            return path;
+            return null;
         }
 
         var grid = terrain.slice(0);
@@ -174,37 +196,28 @@ var People = (function() {
             }
         }
 
-        return path;
+        return null;
     };
 
     Person.prototype.switchTurn = function() {
-        switch (this.direction) {
-        case 0:
-            this.y++;
-            break;
-        case 1:
-            this.x--;
-            break;
-        case 2:
-            this.x++;
-            break;
-        case 3:
-            this.y--;
-            break;
-        }
+        var x = this.x;
+        var y = this.y;
+        this.x = this.adjX;
+        this.y = this.adjY;
+        this.adjX = x;
+        this.adjY = y;
         this.direction = 3 - this.direction;
         this.partial = 1.0 - this.partial;
     }
 
     Person.prototype.legal = function(index) {
-        return terrain[index] < -1;
+        return terrain[index] < -1 && this.available(index);
     }
 
     Person.prototype.nextMove = function() {
         if (!this.path.length) {
-            this.goalX = -1;
-            this.goalY = -1;
-            return;
+            this.tryAgain = true;
+            return false;
         }
         var next = this.path.pop();
         var index = this.y * tileWidth + this.x;
@@ -221,45 +234,33 @@ var People = (function() {
             }
             if (direction !== null && this.reserve(next)) {
                 this.direction = direction;
-                return;
+                this.findAdjacent();
+                return true;
             }
         }
-        this.recalculate();
+        return false
     }
 
     Person.prototype.recalculate = function() {
         var path = this.shortestPath(this.x, this.y, this.goalX, this.goalY);
 
-        if (this.partial > 0.0) {
-            var altX, altY;
-            switch (this.direction) {
-            case 0:
-                altX = this.x;
-                altY = this.y + 1;
-                break;
-            case 1:
-                altX = this.x - 1;
-                altY = this.y;
-                break;
-            case 2:
-                altX = this.x + 1;
-                altY = this.y;
-                break;
-            case 3:
-                altX = this.x;
-                altY = this.y - 1;
-                break;
-            }
-            var alternate = this.shortestPath(altX, altY, this.goalX, this.goalY)
-            if (this.partial + path.length < 1.0 - this.partial + alternate.length) {
+        if (!path) {
+            this.path = new Array();
+            return false;
+        }
+
+        if (this.adjX >= 0 && this.adjY >= 0) {
+            var alternate = this.shortestPath(this.adjX, this.adjY, this.goalX, this.goalY)
+            if (alternate && this.partial + path.length > 1.0 - this.partial + alternate.length) {
+                this.path = alternate;
+            } else {
                 this.path = path;
                 this.switchTurn();
-            } else {
-                this.path = alternate;
             }
+            return true;
         } else {
             this.path = path;
-            this.nextMove();
+            return this.nextMove();
         }
     };
 
@@ -323,7 +324,8 @@ var People = (function() {
     }
 
     obj.prototype.reserve = function(index, id) {
-        if (this.reservations[index] < 0) {
+        var value = this.reservations[index];
+        if (value < 0 || value == id) {
             this.reservations[index] = id;
             return true;
         } else {
@@ -332,7 +334,8 @@ var People = (function() {
     }
 
     obj.prototype.release = function(index, id) {
-        if (this.reservations[index] == id) {
+        var value = this.reservations[index];
+        if (value == id) {
             this.reservations[index] = -1;
             return true;
         } else {
