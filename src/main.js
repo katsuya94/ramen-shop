@@ -5,17 +5,20 @@ $(function() {
 
     var canvas = document.getElementById('frame');
 
-    var seats = [{x: 1, y: 2},
-                 {x: 1, y: 3},
-                 {x: 1, y: 4},
-                 {x: 1, y: 5},
-                 {x: 1, y: 6},
-                 {x: 3, y: 7},
-                 {x: 4, y: 7},
-                 {x: 5, y: 7},
-                 {x: 6, y: 7},
-                 {x: 7, y: 7},
-                 {x: 8, y: 7}];
+    var state = {
+        seats: [
+            {x: 1, y: 2, occupant: null, direction: 2},
+            {x: 1, y: 3, occupant: null, direction: 2},
+            {x: 1, y: 4, occupant: null, direction: 2},
+            {x: 1, y: 5, occupant: null, direction: 2},
+            {x: 3, y: 7, occupant: null, direction: 3},
+            {x: 4, y: 7, occupant: null, direction: 3},
+            {x: 5, y: 7, occupant: null, direction: 3},
+            {x: 6, y: 7, occupant: null, direction: 3},
+            {x: 7, y: 7, occupant: null, direction: 3},
+            {x: 8, y: 7, occupant: null, direction: 3}
+        ]
+    };
 
     function getPos(evt) {
         var rect = canvas.getBoundingClientRect();
@@ -78,8 +81,7 @@ $(function() {
     });
 
     var text = new Array();
-    var tiles = 16 * 9;
-    while (tiles--) text[tiles] = null;
+
     text[0 * 16 + 8] = 'Grab Donburi';
     text[1 * 16 + 8] = 'Grab Donburi';
 
@@ -115,7 +117,12 @@ $(function() {
     text[7 * 16 + 10] = 'Nothing to Cook';
 
     function getText(x, y) {
-        return text[y * 16 + x];
+        var value = text[y * 16 + x];
+        if (typeof(value) === 'function') {
+            return value();
+        } else {
+            return value;
+        }
     }
 
     var last;
@@ -126,9 +133,23 @@ $(function() {
         last = now;
 
         if (Math.random() < 0.1 * dt / 1000) {
-            console.log('add customer');
+            invisible = new Array();
+            for (var i = 0; i < people.people.length; i++) {
+                if (!people.people[i].visible) {
+                    invisible.push(people.people[i]);
+                }
+            }
+            if (invisible.length) {
+                var person = invisible[~~(Math.random() * invisible.length)];
+                person.x = 0;
+                person.y = 1;
+                person.visible = true;
+                person.start();
+                person.objective = 0;
+            }
         }
 
+        people.think(state);
         people.update(dt);
         renderer.render(getText);
 
@@ -136,7 +157,7 @@ $(function() {
     }
 
     function start() {
-        people.start();
+        karis.start();
         last = new Date();
         setTimeout(frame, 0);
     }

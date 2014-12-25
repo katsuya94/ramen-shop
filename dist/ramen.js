@@ -9211,17 +9211,20 @@ $(function() {
 
     var canvas = document.getElementById('frame');
 
-    var seats = [{x: 1, y: 2},
-                 {x: 1, y: 3},
-                 {x: 1, y: 4},
-                 {x: 1, y: 5},
-                 {x: 1, y: 6},
-                 {x: 3, y: 7},
-                 {x: 4, y: 7},
-                 {x: 5, y: 7},
-                 {x: 6, y: 7},
-                 {x: 7, y: 7},
-                 {x: 8, y: 7}];
+    var state = {
+        seats: [
+            {x: 1, y: 2, occupant: null, direction: 2},
+            {x: 1, y: 3, occupant: null, direction: 2},
+            {x: 1, y: 4, occupant: null, direction: 2},
+            {x: 1, y: 5, occupant: null, direction: 2},
+            {x: 3, y: 7, occupant: null, direction: 3},
+            {x: 4, y: 7, occupant: null, direction: 3},
+            {x: 5, y: 7, occupant: null, direction: 3},
+            {x: 6, y: 7, occupant: null, direction: 3},
+            {x: 7, y: 7, occupant: null, direction: 3},
+            {x: 8, y: 7, occupant: null, direction: 3}
+        ]
+    };
 
     function getPos(evt) {
         var rect = canvas.getBoundingClientRect();
@@ -9284,8 +9287,7 @@ $(function() {
     });
 
     var text = new Array();
-    var tiles = 16 * 9;
-    while (tiles--) text[tiles] = null;
+
     text[0 * 16 + 8] = 'Grab Donburi';
     text[1 * 16 + 8] = 'Grab Donburi';
 
@@ -9321,7 +9323,12 @@ $(function() {
     text[7 * 16 + 10] = 'Nothing to Cook';
 
     function getText(x, y) {
-        return text[y * 16 + x];
+        var value = text[y * 16 + x];
+        if (typeof(value) === 'function') {
+            return value();
+        } else {
+            return value;
+        }
     }
 
     var last;
@@ -9332,9 +9339,23 @@ $(function() {
         last = now;
 
         if (Math.random() < 0.1 * dt / 1000) {
-            console.log('add customer');
+            invisible = new Array();
+            for (var i = 0; i < people.people.length; i++) {
+                if (!people.people[i].visible) {
+                    invisible.push(people.people[i]);
+                }
+            }
+            if (invisible.length) {
+                var person = invisible[~~(Math.random() * invisible.length)];
+                person.x = 0;
+                person.y = 1;
+                person.visible = true;
+                person.start();
+                person.objective = 0;
+            }
         }
 
+        people.think(state);
         people.update(dt);
         renderer.render(getText);
 
@@ -9342,7 +9363,7 @@ $(function() {
     }
 
     function start() {
-        people.start();
+        karis.start();
         last = new Date();
         setTimeout(frame, 0);
     }
@@ -9412,6 +9433,9 @@ var People = (function() {
         this.reserve = reserve;
         this.release = release;
         this.available = available;
+
+        this.objective = -1;
+        this.seat = null;
     }
 
     Person.prototype.start = function() {
@@ -9419,18 +9443,18 @@ var People = (function() {
         this.interval = setInterval(function() {
             instance.animate.call(instance);
         }, 250);
-    }
+    };
 
     Person.prototype.stop = function() {
         if (this.interval) {
             clearInterval(this.interval);
             this.interval = null;
         }
-    }
+    };
 
     Person.prototype.animate = function() {
         this.frame = (this.frame + 1) % maxFrame;
-    }
+    };
 
     Person.prototype.findAdjacent = function() {
         switch (this.direction) {
@@ -9449,6 +9473,40 @@ var People = (function() {
          case 3:
             this.adjX = this.x;
             this.adjY = this.y - 1;
+            break;
+        }
+    };
+
+    Person.prototype.think = function(state) {
+        switch (this.objective) {
+        case 0:
+            if (!this.seat || this.seat.occupant) {
+                var unoccupied = new Array();
+                for (var i = 0; i < state.seats.length; i++) {
+                    if (!state.seats[i].occupant) {
+                        unoccupied.push(state.seats[i]);
+                    }
+                }
+                if (unoccupied.length) {
+                    var seat = unoccupied[~~(Math.random() * unoccupied.length)];
+                    this.seat = seat;
+                    this.setGoal(seat.x, seat.y);
+                }
+            }
+            break;
+        default:
+            break;
+        }
+    };
+
+    Person.prototype.objectiveComplete = function() {
+        switch (this.objective) {
+        case 0:
+            this.direction = this.seat.direction;
+            this.seat.occupant = this;
+            this.objective = 1;
+            break;
+        default:
             break;
         }
     }
@@ -9478,6 +9536,7 @@ var People = (function() {
                 if (this.x == this.goalX && this.y == this.goalY) {
                     this.goalX = -1;
                     this.goalY = -1;
+                    this.objectiveComplete();
                 } else {
                     if (!this.nextMove()) {
                         this.tryAgain = true;
@@ -9641,6 +9700,14 @@ var People = (function() {
                              -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1];
     };
 
+    obj.prototype.think = function(state) {
+        for (var i = 0; i < this.people.length; i++) {
+            if (this.people[i].visible) {
+                this.people[i].think(state);
+            }
+        }
+    }
+
     obj.prototype.update = function(dt) {
         for (var i = 0; i < this.people.length; i++) {
             if (this.people[i].visible) {
@@ -9678,12 +9745,6 @@ var People = (function() {
                 }
             }
             this.ready();
-        }
-    }
-
-    obj.prototype.start = function() {
-        for (var i = 0; i < this.people.length; i++) {
-            this.people[i].start();
         }
     }
 
@@ -9750,14 +9811,14 @@ var Renderer = (function() {
                    0,   0,   0,   0,   0,   0,   0,   0,   0,  -1,   5,   4,   4,   4,   4,   4,
                    0,   0,   0,   0,   0,   0,   0,   0,   0,  -1,   5,   4,   4,   4,   4,   4,
                    0,   0,   0,   0,   0,   0,   0,   0,   0,  -1,   5,   4,   4,   4,   4,   4],
-                [ -1,  -1,  -1,  -2,  -1, 321, 178, 186,  -1,  -1, 248, 249, 248, 249, 248, 249,
-                  -1,  -1, 176, 177, 250, 251, 251, 251, 252,  -1, 256, 257, 256, 257, 256, 257,
+                [343,  -1,  -1,  -2,  -1, 321, 178, 186,  -1,  -1, 248, 249, 248, 249, 248, 249,
+                 351,  -1, 176, 177, 250, 251, 251, 251, 252,  -1, 256, 257, 256, 257, 256, 257,
                   -1,  -1, 184, 185, 266, 267, 267, 267, 268,  -1, 264, 265, 264, 265, 264, 265,
                   -1, 128, 184, 185,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
                   -1, 128, 184, 185,  -1, 266, 267, 268,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
                   -1, 128, 192, 193,  -1,  -1,  -1,  -1,  -1,  -1, 261,  -1, 258, 259, 260,  -1,
                   -1, 128, 200, 201, 202, 202, 202, 202, 202,  -1, 261,  -1, 258, 259, 260,  -1,
-                  -1, 128, 208, 209, 210, 210, 210, 210, 210,  -1, 261,  -1, 266, 267, 268,  -1,
+                  -1,  -1, 208, 209, 210, 210, 210, 210, 210,  -1, 261,  -1, 266, 267, 268,  -1,
                   -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1, 277,  -1,  -1,  -1,  -1,  -1],
                 [ -1,  -1,  91,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
                   -1,  -1,  99,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
@@ -9765,11 +9826,11 @@ var Renderer = (function() {
                   -1, 120,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
                   -1, 120,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
                   -1, 120,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
-                  -1, 120,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
+                  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
                   -1,  -1,  -1, 120, 120, 120, 120, 120, 120,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
                   -1,  -1,  -1, 128, 128, 128, 128, 128, 128,  -1,  -1,  -1,  -1,  -1,  -1,  -1],
-                [343,  -1,  -1,  -1,  -1,  -1,  -1,  -1, 222,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
-                 351,  -1,  -1,  -1,  81,  -1,  -1,  -1, 230,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
+                [ -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1, 222,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
+                  -1,  -1,  -1,  -1,  81,  -1,  -1,  -1, 230,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
                   -1,  -1,  -1, 142,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
                   -1,  -1,  -1, 142,  -1, 250, 251, 252,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
                   -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,   7, 253,  -1, 250, 251, 252,  -1,
@@ -9885,6 +9946,7 @@ var Renderer = (function() {
         }
 
         // this.ctx.globalAlpha = 1.0
+        // this.ctx.lineWidth = 1;
         // this.ctx.strokeStyle = '#0000FF';
 
         // for (var i = 0; i < this.people.people.length; i++) {

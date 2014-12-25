@@ -62,6 +62,9 @@ var People = (function() {
         this.reserve = reserve;
         this.release = release;
         this.available = available;
+
+        this.objective = -1;
+        this.seat = null;
     }
 
     Person.prototype.start = function() {
@@ -69,18 +72,18 @@ var People = (function() {
         this.interval = setInterval(function() {
             instance.animate.call(instance);
         }, 250);
-    }
+    };
 
     Person.prototype.stop = function() {
         if (this.interval) {
             clearInterval(this.interval);
             this.interval = null;
         }
-    }
+    };
 
     Person.prototype.animate = function() {
         this.frame = (this.frame + 1) % maxFrame;
-    }
+    };
 
     Person.prototype.findAdjacent = function() {
         switch (this.direction) {
@@ -99,6 +102,40 @@ var People = (function() {
          case 3:
             this.adjX = this.x;
             this.adjY = this.y - 1;
+            break;
+        }
+    };
+
+    Person.prototype.think = function(state) {
+        switch (this.objective) {
+        case 0:
+            if (!this.seat || this.seat.occupant) {
+                var unoccupied = new Array();
+                for (var i = 0; i < state.seats.length; i++) {
+                    if (!state.seats[i].occupant) {
+                        unoccupied.push(state.seats[i]);
+                    }
+                }
+                if (unoccupied.length) {
+                    var seat = unoccupied[~~(Math.random() * unoccupied.length)];
+                    this.seat = seat;
+                    this.setGoal(seat.x, seat.y);
+                }
+            }
+            break;
+        default:
+            break;
+        }
+    };
+
+    Person.prototype.objectiveComplete = function() {
+        switch (this.objective) {
+        case 0:
+            this.direction = this.seat.direction;
+            this.seat.occupant = this;
+            this.objective = 1;
+            break;
+        default:
             break;
         }
     }
@@ -128,6 +165,7 @@ var People = (function() {
                 if (this.x == this.goalX && this.y == this.goalY) {
                     this.goalX = -1;
                     this.goalY = -1;
+                    this.objectiveComplete();
                 } else {
                     if (!this.nextMove()) {
                         this.tryAgain = true;
@@ -291,6 +329,14 @@ var People = (function() {
                              -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1];
     };
 
+    obj.prototype.think = function(state) {
+        for (var i = 0; i < this.people.length; i++) {
+            if (this.people[i].visible) {
+                this.people[i].think(state);
+            }
+        }
+    }
+
     obj.prototype.update = function(dt) {
         for (var i = 0; i < this.people.length; i++) {
             if (this.people[i].visible) {
@@ -328,12 +374,6 @@ var People = (function() {
                 }
             }
             this.ready();
-        }
-    }
-
-    obj.prototype.start = function() {
-        for (var i = 0; i < this.people.length; i++) {
-            this.people[i].start();
         }
     }
 
